@@ -14,7 +14,7 @@ rec {
       )
     );
 
-  defaultDoughs = lib.attrsets.fold (
+  defaultDoughs = lib.mergeLeft (
     map (
       path:
       let
@@ -48,9 +48,9 @@ rec {
       importList =
         expr':
         let
-          doughs' = (lib.mergeLeft (map (module: module.bakery.doughs or { }) expr')).doughs or { };
+          doughs' = (lib.mergeLeft (map (module: module.bakery or { }) expr')).doughs or { };
 
-          doughs = (if doughs'.disableDefaults or false then defaultDoughs else { }) // doughs';
+          doughs = (if doughs'.disableDefaults or false then { } else defaultDoughs) // doughs';
 
           collected = lib.filterAttrs (name: value: builtins.hasAttr name doughs) (
             lib.descendAttrs (map (module: module.bakery or { }) expr')
@@ -63,11 +63,10 @@ rec {
                 builtins.attrValues (
                   builtins.mapAttrs (
                     name: value:
-                    (doughs.${name}) (
+                    (doughs.${name}) value (
                       args
                       // {
                         inherit self';
-                        list = value;
                       }
                     )
                   ) collected

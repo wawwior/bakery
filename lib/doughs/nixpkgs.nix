@@ -1,9 +1,12 @@
-inputs@{ ... }:
-with inputs.self.lib.attrs;
+{ self, ... }:
+let
+  lib = self.lib;
+in
 {
   nixpkgs =
-    { list, ... }:
+    modules:
+    { ... }:
     {
-      nixpkgs = builtins.foldl' (acc: set: mergeRecursive acc set) { } list;
+      nixpkgs = lib.mergeLeft modules;
     };
 }

@@ -1,11 +1,14 @@
-inputs@{ ... }:
-with inputs.self.lib.attrs;
+{ self, ... }:
+let
+  lib = self.lib;
+in
 {
   nixosSystems =
+    modules:
     {
       inputs',
       self',
-      list,
+      ...
     }:
     {
       nixosConfigurations = builtins.mapAttrs (
@@ -21,6 +24,6 @@ with inputs.self.lib.attrs;
             )
           ];
         }
-      ) (builtins.foldl' (acc: set: mergeRecursive acc set) { } list);
+      ) (lib.mergeLeft modules);
     };
 }

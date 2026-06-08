@@ -1,9 +1,12 @@
-inputs@{ ... }:
-with inputs.self.lib.attrsets;
+{ self, ... }:
+let
+  lib = self.lib;
+in
 {
   nixosModules =
-    { list, ... }:
+    modules:
+    { ... }:
     {
-      nixosModules = builtins.mapAttrs (name: value: { imports = value; }) (descend list);
+      nixosModules = builtins.mapAttrs (name: value: { imports = value; }) (lib.descendAttrs modules);
     };
 }
