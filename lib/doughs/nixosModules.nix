@@ -1,11 +1,9 @@
 inputs@{ ... }:
-with inputs.self.lib.attrs;
+with inputs.self.lib.attrsets;
 {
   nixosModules =
     { list, ... }:
     {
-      nixosModules = builtins.mapAttrs (name: value: { imports = value; }) (
-        collect (builtins.attrNames (builtins.foldl' (acc: set: acc // set) { } list)) list
-      );
+      nixosModules = builtins.mapAttrs (name: value: { imports = value; }) (descend list);
     };
 }

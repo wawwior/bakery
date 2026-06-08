@@ -1,19 +1,20 @@
-inputs@{ ... }:
+inputs@{ self, ... }:
+let
+  lib = self.lib;
+in
 rec {
-
-  file-tree = import ./file-tree.nix inputs;
-  predicates = import ./predicates.nix inputs;
-  attrs = import ./attrs.nix inputs;
 
   collectFiles =
     path:
-    with file-tree;
-    with predicates;
-    (collect path (
-      prune (filter isNixFile (_and (_not isDotFile) (_not (startsWith "_"))) (scan path))
-    ));
+    lib.collectPaths path (
+      lib.pruneFileTree (
+        lib.filterFileTree (file: (builtins.match "[^\._].*\.nix" file) != null) (
+          dir: (builtins.match "[^\._].*" dir) != null
+        ) (lib.scanDirectory path)
+      )
+    );
 
-  defaultDoughs = attrs.fold (
+  defaultDoughs = lib.attrsets.fold (
     map (
       path:
       let
@@ -23,66 +24,71 @@ rec {
     ) (collectFiles ./doughs)
   );
 
-  mkFlake = inputs: _mkFlake { inputs' = inputs; };
+  mkFlake = _: _mkFlake { inputs' = _; };
 
   _mkFlake =
     args@{ inputs' }:
     expr:
     let
-      import' =
+      importDir =
+        path:
+        let
+          collected = collectFiles path;
+
+          outputs = map (
+            path:
+            let
+              module = import path;
+            in
+            if builtins.isFunction module then module inputs' else module
+          ) collected;
+        in
+        importList outputs;
+
+      importList =
         expr':
+        let
+          doughs' = (lib.mergeLeft (map (module: module.bakery.doughs or { }) expr')).doughs or { };
 
-        if builtins.isPath expr' then
-          if builtins.readFileType expr' == "directory" then
-            import' (
-              map (
-                path:
-                let
-                  module = import path;
-                in
-                if builtins.isFunction module then module inputs' else module
-              ) (collectFiles expr')
+          doughs = (if doughs'.disableDefaults or false then defaultDoughs else { }) // doughs';
+
+          collected = lib.filterAttrs (name: value: builtins.hasAttr name doughs) (
+            lib.descendAttrs (map (module: module.bakery or { }) expr')
+          );
+
+          outputs =
+            (
+              self':
+              (lib.mergeLeft (
+                builtins.attrValues (
+                  builtins.mapAttrs (
+                    name: value:
+                    (doughs.${name}) (
+                      args
+                      // {
+                        inherit self';
+                        list = value;
+                      }
+                    )
+                  ) collected
+                )
+              ))
             )
-          else
-            import' (import expr')
+              outputs;
+        in
+        outputs;
 
+      importExpr' =
+        expr':
+        if builtins.isPath expr' then
+          if builtins.readFileType expr' == "directory" then importDir expr' else importExpr' (import expr')
         else if builtins.isList expr' then
-          with attrs;
-          let
-            doughs' = (attrs.fold (map (module: module.bakery.doughs or { }) expr')).doughs or { };
-
-            doughs = if doughs'.disableDefaults or false then doughs' else defaultDoughs // doughs';
-
-            collected = (collect (builtins.attrNames doughs) (map (module: module.bakery or { }) expr'));
-
-            outputs =
-              (
-                self':
-                (builtins.foldl' (acc: set: mergeRecursive acc set) { } (
-                  builtins.attrValues (
-                    builtins.mapAttrs (
-                      name: value:
-                      (doughs.${name}) (
-                        args
-                        // {
-                          inherit self';
-                          list = value;
-                        }
-                      )
-                    ) collected
-                  )
-                ))
-              )
-                outputs;
-          in
-          outputs
-
+          importList expr'
         else if builtins.isFunction expr' then
-          import' (expr' inputs')
-
+          importExpr' (expr' inputs')
         else
-          import' [ expr' ];
+          importList [ expr' ];
 
     in
-    import' expr;
+    importExpr' expr;
 }
