@@ -12,14 +12,18 @@ in
     }:
     {
       nixosConfigurations = builtins.mapAttrs (
-        name: modules':
+        name: module':
+        let
+          hostName = module'.hostName or name;
+          modules' = module'.modules or [ ];
+        in
         inputs'.nixpkgs.lib.nixosSystem {
           modules = modules' ++ [
             (
-              { pkgs, ... }:
+              { ... }:
               {
                 nixpkgs = self'.nixpkgs;
-                networking.hostName = pkgs.lib.mkDefault name;
+                networking = { inherit hostName; };
               }
             )
           ];
