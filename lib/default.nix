@@ -14,20 +14,10 @@ rec {
       )
     );
 
-  defaultDoughs = lib.mergeLeft (
-    map (
-      path:
-      let
-        expr = import path;
-      in
-      if builtins.isFunction expr then expr inputs else expr
-    ) (collectFiles ./doughs)
-  );
-
   mkFlake = _: _mkFlake { inputs' = _; };
 
   _mkFlake =
-    args@{ inputs' }:
+    { inputs' }:
     expr:
     let
       importDir =
@@ -48,34 +38,146 @@ rec {
       importList =
         expr':
         let
-          doughs' = (lib.mergeLeft (map (module: module.bakery or { }) expr')).doughs or { };
 
-          doughs = (if doughs'.disableDefaults or false then { } else defaultDoughs) // doughs';
+          bakery' = (lib.descendAttrs (map (value: value.bakery or { }) expr'));
 
-          collected = lib.filterAttrs (name: value: builtins.hasAttr name doughs) (
-            lib.descendAttrs (map (module: module.bakery or { }) expr')
+          modules = lib.mergeLeft (
+            map (
+              value:
+              (builtins.mapAttrs (
+                name: module:
+                {
+                  requires = module.requires or [ ];
+                }
+                // (
+                  if (module.nixos or { }) == { } then
+                    { }
+                  else
+                    {
+                      nixos = {
+                        imports = [ module.nixos or { } ];
+                      };
+                    }
+                )
+                // (
+                  if (module.home or { }) == { } then
+                    { }
+                  else
+                    {
+                      home = {
+                        imports = [ module.home or { } ];
+                      };
+                    }
+                )
+              ) value)
+            ) bakery'.modules
           );
 
-          outputs =
-            (
-              self':
-              (lib.mergeLeft (
-                builtins.attrValues (
-                  builtins.mapAttrs (
-                    name: value:
-                    (doughs.${name}) value (
-                      args
-                      // {
-                        inherit self';
-                      }
-                    )
-                  ) collected
-                )
-              ))
-            )
-              outputs;
+          nixpkgs = lib.mergeLeft bakery'.nixpkgs;
+
+          # TODO: composability
+          systems = lib.mergeLeft bakery'.systems;
+
+          users = lib.mergeLeft bakery'.users;
+
         in
-        outputs;
+        {
+
+          bakery = {
+            inherit modules systems users;
+          };
+
+          nixosConfigurations = builtins.mapAttrs (
+            name: system:
+            let
+
+              usernames = builtins.attrValues (builtins.mapAttrs (name: value: value.name or name) system.users);
+
+              resolveUser =
+                user:
+                (builtins.concatLists (map resolveUserModule (user.modules or [ ])))
+                ++ [
+                  (
+                    { pkgs, ... }:
+                    let
+                      username = user.name;
+                      homeDirectory =
+                        user.homeDirectory or (if pkgs.stdenv.isLinux then "/home/${username}" else "/Users/${username}");
+                    in
+                    if (user.modules or [ ]) == [ ] then
+                      { }
+                    else
+                      {
+                        imports = [
+                          inputs'.home-manager.nixosModules.home-manager
+                        ];
+                        home-manager.users.${username} = {
+                          home = {
+                            inherit username homeDirectory;
+                          };
+                        };
+                      }
+                  )
+
+                ];
+
+              resolveUserModule =
+                username: module:
+                (builtins.concatLists (map resolveUserModule module.requires or [ ]))
+                ++ [
+                  (module.nixos or { })
+                  (
+                    if (module.home or { }) == { } then
+                      { }
+                    else
+                      {
+                        home-manager.users.${username}.imports = [ module.home ];
+                      }
+                  )
+                ];
+
+              resolveModule =
+                module:
+                (builtins.concatLists (map resolveModule module.requires or [ ]))
+                ++ [
+                  (module.nixos or { })
+                  (
+                    if (module.home or { }) == { } then
+                      { }
+                    else
+                      (
+                        { ... }:
+                        {
+                          imports = [
+                            inputs'.home-manager.nixosModules.home-manager
+                          ];
+                          home-manager.users = builtins.listToAttrs (
+                            map (name: {
+                              inherit name;
+                              value = {
+                                imports = [
+                                  module.home
+                                ];
+                              };
+                            }) usernames
+                          );
+                        }
+                      )
+                  )
+                ];
+            in
+            inputs'.nixpkgs.lib.nixosSystem {
+              modules =
+                (builtins.concatLists (map resolveModule system.modules))
+                ++ (builtins.concatLists (map resolveUser system.users))
+                ++ [
+                  {
+                    inherit nixpkgs;
+                  }
+                ];
+            }
+          ) systems;
+        };
 
       importExpr' =
         expr':
