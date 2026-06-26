@@ -91,7 +91,7 @@ rec {
             name: system:
             let
 
-              usernames = builtins.attrValues (builtins.mapAttrs (name: value: value.name or name) system.users);
+              usernames = builtins.attrValues (builtins.mapAttrs (name: value: value.name) system.users);
 
               resolveUser =
                 user:
@@ -104,19 +104,30 @@ rec {
                       homeDirectory =
                         user.homeDirectory or (if pkgs.stdenv.isLinux then "/home/${username}" else "/Users/${username}");
                     in
-                    if (user.modules or [ ]) == [ ] then
-                      { }
-                    else
-                      {
-                        imports = [
-                          inputs'.home-manager.nixosModules.home-manager
-                        ];
-                        home-manager.users.${username} = {
-                          home = {
-                            inherit username homeDirectory;
+                    (
+                      if (user.modules or [ ]) == [ ] then
+                        { }
+                      else
+                        {
+                          imports = [
+                            inputs'.home-manager.nixosModules.home-manager
+                          ];
+                          home-manager.users.${username} = {
+                            home = {
+                              inherit username homeDirectory;
+                            };
                           };
-                        };
-                      }
+                        }
+                    )
+                    // {
+                      users.mutableUsers = false;
+                      users.groups.${username} = { };
+                      users.users.${username} = {
+                        name = username;
+                        home = homeDirectory;
+                        group = username;
+                      };
+                    }
                   )
 
                 ];
