@@ -99,7 +99,7 @@ in
     ) bakery;
 
   produceOutputs =
-    bakery:
+    bakery: inputs':
     lib.mergeLeft (
       builtins.concatLists (
         builtins.attrValues (
@@ -111,7 +111,7 @@ in
                 (dough.output or (_: { })) {
                   inherit name;
                   module = lib.resolveModule {
-                    inherit bakery module;
+                    inherit bakery module inputs';
                     scope = module.__bakeryType;
                     context = removeAttrs module [ "includes" ];
                   };
@@ -130,25 +130,22 @@ in
       scope,
       context,
     }:
-    lib.mergeLeft (
-      builtins.attrValues (
-        builtins.mapAttrs (
-          name: value:
-          (bakery.doughs.${module.__bakeryType}.attributes.${name}.resolve.${scope} or (_: _: { })) context
-            value
-        ) module
-      )
-      ++ [
-        {
-          # TODO: extensible 'requires' resolving?
-          imports = map (
-            required:
-            lib.resolveModule {
-              inherit bakery scope context;
-              module = required;
-            }
-          ) (module.requires);
-        }
-      ]
-    );
+    {
+      # TODO: extensible requires
+      imports =
+        (builtins.attrValues (
+          builtins.mapAttrs (
+            name: value:
+            (bakery.doughs.${module.__bakeryType}.attributes.${name}.resolve.${scope} or (_: _: { })) context
+              value
+          ) module
+        ))
+        ++ map (
+          required:
+          lib.resolveModule {
+            inherit bakery scope context;
+            module = required;
+          }
+        ) (module.requires);
+    };
 }
