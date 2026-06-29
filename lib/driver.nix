@@ -109,9 +109,9 @@ in
               builtins.mapAttrs (
                 name: module:
                 (dough.output or (_: { })) {
-                  inherit name;
+                  inherit name inputs';
                   module = lib.resolveModule {
-                    inherit bakery module inputs';
+                    inherit bakery module;
                     scope = module.__bakeryType;
                     context = removeAttrs module [ "includes" ];
                   };
