@@ -117,7 +117,7 @@ in
                   module = lib.resolveModule {
                     inherit bakery module;
                     scope = module.__bakeryType;
-                    context = removeAttrs module [ "includes" ];
+                    context = removeAttrs module [ "requires" ];
                   };
                 }
               ) bakery.${type}
@@ -151,18 +151,15 @@ in
           builtins.mapAttrs (
             name: value:
             let
-              scope' = if module.__bakeryType == scope then "self" else scope;
+              scope' = if required.__bakeryType == scope then "self" else scope;
             in
-            (bakery.doughs.${module.__bakeryType}.attributes.${name}.resolve.${scope'} or (_: _: { })) context
+            (bakery.doughs.${required.__bakeryType}.attributes.${name}.resolve.${scope'} or (_: _: { })) context
               value
           ) required
         ))
-        ++ [
-          lib.resolveRequires
-          {
-            inherit bakery scope context;
-            module = required;
-          }
-        ];
+        ++ (lib.resolveRequires {
+          inherit bakery scope context;
+          module = required;
+        });
     }) (module.requires);
 }
