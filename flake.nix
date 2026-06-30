@@ -13,8 +13,7 @@
           attrsets = import ./lib/attrsets.nix inputs;
           driver = import ./lib/driver.nix inputs;
         in
-        (import ./lib inputs)
-        // file-tree
+        file-tree
         // attrsets
         // driver
         // {
