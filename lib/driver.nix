@@ -1,4 +1,4 @@
-inputs@{ self, ... }:
+{ self, ... }:
 let
   inherit (self) lib;
 in
@@ -10,7 +10,11 @@ in
       doughs = builtins.mapAttrs (name: value: value // { __bakeryType = name; }) (
         lib.mergeLeft (lib.descendAttrs list).doughs
       );
-      out = if builtins.hasAttr "doughs" doughs then throw "cannot define dough for doughs" else doughs;
+      out =
+        if builtins.hasAttr "doughs" doughs || builtins.hasAttr "self" doughs then
+          throw "cannot define dough for doughs or self"
+        else
+          doughs;
     in
     out;
 
@@ -124,28 +128,41 @@ in
     );
 
   resolveModule =
+    args@{
+      module,
+      ...
+    }:
+    module
+    // {
+      requires = lib.resolveRequires args;
+    };
+
+  resolveRequires =
     {
       bakery,
       module,
       scope,
       context,
     }:
-    {
+    map (required: {
       # TODO: extensible requires
       imports =
         (builtins.attrValues (
           builtins.mapAttrs (
             name: value:
-            (bakery.doughs.${module.__bakeryType}.attributes.${name}.resolve.${scope} or (_: _: { })) context
+            let
+              scope' = if module.__bakeryType == scope then "self" else scope;
+            in
+            (bakery.doughs.${module.__bakeryType}.attributes.${name}.resolve.${scope'} or (_: _: { })) context
               value
-          ) module
+          ) required
         ))
-        ++ map (
-          required:
-          lib.resolveModule {
+        ++ [
+          lib.resolveRequires
+          {
             inherit bakery scope context;
             module = required;
           }
-        ) (module.requires);
-    };
+        ];
+    }) (module.requires);
 }
